@@ -19,6 +19,46 @@ def calculate_splits(model_size, max_size):
     splits = np.ceil(model_size / max_size)
     return int(splits)
 
+def create_dovetail(width, height, depth, angle):
+    # Create a single dovetail shape
+    points = [
+        [0, 0, 0],
+        [width, 0, 0],
+        [width - np.tan(angle) * height, height, 0],
+        [np.tan(angle) * height, height, 0]
+    ]
+    faces = [[0, 1, 2], [0, 2, 3]]
+    dovetail = trimesh.Trimesh(vertices=points, faces=faces)
+    dovetail = dovetail.extrude(depth)
+    return dovetail
+
+def add_dovetails(mesh, split_axis, num_splits, dovetail_params):
+    bounds = mesh.bounds
+    axis_length = bounds[1][split_axis] - bounds[0][split_axis]
+    segment_length = axis_length / num_splits
+
+    for i in range(1, num_splits):
+        position = bounds[0][split_axis] + i * segment_length
+        
+        # Create male and female dovetails
+        male_dovetail = create_dovetail(**dovetail_params)
+        female_dovetail = male_dovetail.copy()
+        female_dovetail.invert()
+
+        # Position dovetails
+        translation = [0, 0, 0]
+        translation[split_axis] = position
+        male_dovetail.apply_translation(translation)
+        female_dovetail.apply_translation(translation)
+
+        # Add dovetails to the mesh
+        mesh = mesh.union(male_dovetail)
+        mesh = mesh.difference(female_dovetail)
+
+    return mesh
+
+
+
 def split_stl_into_grid(input_stl, xsplit=None, ysplit=None, max_x=None, max_y=None, flip=False):
     """
     Splits an STL file into a grid of smaller STL files and prints their dimensions.
@@ -50,7 +90,7 @@ def split_stl_into_grid(input_stl, xsplit=None, ysplit=None, max_x=None, max_y=N
 
     # Print main part dimensions
     print(f"Main part dimensions (mm): X: {model_size_x:.2f}, Y: {model_size_y:.2f}, Z: {model_size_z:.2f}")
-
+    
     # Determine the number of splits
     if xsplit is None:
         if max_x is not None:
@@ -84,6 +124,21 @@ def split_stl_into_grid(input_stl, xsplit=None, ysplit=None, max_x=None, max_y=N
     y_extent = np.linspace(bounds[0][1], bounds[1][1], ysplit + 1)
     z_min, z_max = bounds[0][2], bounds[1][2]
 
+    if dovetail:
+        dovetail_params = {
+        'width': 10,  # Adjust as needed
+        'height': 5,  # Adjust as needed
+        'depth': min(segment_size_x, segment_size_y) / 2,  # Half the smaller segment size
+        'angle': np.radians(15)  # 15-degree angle
+        }
+        if xsplit > 1:
+            mesh = add_dovetails(mesh, 0, xsplit, dovetail_params)
+        if ysplit > 1:
+            mesh = add_dovetails(mesh, 1, ysplit, dovetail_params)
+
+    # Split the mesh into grid cells
+    part_number = 1
+    
     # Split the mesh into grid cells
     part_number = 1
     for i in range(xsplit):
@@ -115,6 +170,7 @@ if __name__ == "__main__":
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Split an STL file into a grid of smaller STL files.")
     parser.add_argument("input_stl", help="Path to the input STL file")
+    parser.add_argument("--dovetail", action="store_true", help="Add symmetrical dovetail joints at each split")
     parser.add_argument("--xsplit", type=int, default=None, help="Number of divisions along the X-axis")
     parser.add_argument("--ysplit", type=int, default=None, help="Number of divisions along the Y-axis")
     parser.add_argument("--max-x", "-mx", type=float, default=None, help="Maximum printable dimension along the X-axis in mm")
@@ -130,5 +186,6 @@ if __name__ == "__main__":
         ysplit=args.ysplit,
         max_x=args.max_x,
         max_y=args.max_y,
-        flip=args.flip
+        flip=args.flip,
+        dovetail=args.dovetail
     )
