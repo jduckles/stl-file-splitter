@@ -59,7 +59,7 @@ def add_dovetails(mesh, split_axis, num_splits, dovetail_params):
 
 
 
-def split_stl_into_grid(input_stl, xsplit=None, ysplit=None, max_x=None, max_y=None, flip=False):
+def split_stl_into_grid(input_stl, xsplit=None, ysplit=None, max_x=None, max_y=None, flip=False, dovetail=False):
     """
     Splits an STL file into a grid of smaller STL files and prints their dimensions.
 
